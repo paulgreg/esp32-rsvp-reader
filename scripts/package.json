@@ -1,0 +1,11 @@
+{
+  "name": "epub-convert",
+  "version": "1.0.0",
+  "description": "Convert EPUB to TXT with proper text extraction",
+  "main": "convert.js",
+  "type": "module",
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "cheerio": "^1.0.0"
+  }
+}
