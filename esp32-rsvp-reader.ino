@@ -34,6 +34,9 @@ void setup() {
 
   printMsg(books[0].title);
   delay(500);
+
+  fillScreen(BACKGND);
+  drawOrpMarkers();
   g_ready = true;
 }
 

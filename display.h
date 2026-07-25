@@ -82,6 +82,22 @@ void printError(const char* text) {
   drawText(5, 50, ILI9341_RED, text);
 }
 
+int16_t getOrpColumnX() {
+  return ((int16_t)tft.width() / 2) + ORP_OFFSET_FROM_CENTER_PX;
+}
+
+void drawOrpMarkers() {
+  const int16_t orpX = getOrpColumnX();
+  const int16_t baselineY = (int16_t)tft.height() / 2 + 9;
+
+  const int16_t topY = baselineY - (int16_t)Cantarell_Bold_euro18pt8b.yAdvance / 2 - ORP_MARKER_TOP_GAP_PX - ORP_MARKER_HEIGHT_PX;
+  const int16_t bottomY = baselineY + (int16_t)Cantarell_Bold_euro18pt8b.yAdvance / 2 + ORP_MARKER_BOTTOM_GAP_PX;
+  const int16_t markerX = orpX - (ORP_MARKER_WIDTH_PX / 2) + ORP_MARKER_RIGHT_GAP_PX;
+
+  tft.fillRect(markerX, topY, ORP_MARKER_WIDTH_PX, ORP_MARKER_HEIGHT_PX, COLOR_ORP);
+  tft.fillRect(markerX, bottomY, ORP_MARKER_WIDTH_PX, ORP_MARKER_HEIGHT_PX, COLOR_ORP);
+}
+
 void displayWord(const char* word) {
   static int16_t prevX = 0;
   static int16_t prevY = 0;
@@ -140,7 +156,7 @@ void displayWord(const char* word) {
 
   tft.setFont(font);
   tft.setTextSize(1);
-  const int16_t orpX = ((int16_t)tft.width() / 2) + ORP_OFFSET_FROM_CENTER_PX;
+  const int16_t orpX = getOrpColumnX();
   const int16_t x = orpX - leftAdvance;
   const int16_t baselineY = (int16_t)tft.height() / 2 + 9;
 
@@ -194,4 +210,6 @@ void displayWord(const char* word) {
       prevH = (uint16_t)nh;
     }
   }
+
+  drawOrpMarkers();
 }
