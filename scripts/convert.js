@@ -195,8 +195,10 @@ function processTxtFile(filePath) {
   };
 }
 
-function createOutputContent(metadata, textContent) {
-  return `TITLE=${metadata.title}\nAUTHOR=${metadata.author}\n---\n${textContent}`;
+function createOutputContent(_metadata, textContent) {
+  // ignore meta data for now
+  // return `TITLE=${metadata.title}\nAUTHOR=${metadata.author}\n---\n${textContent}`;
+  return textContent;
 }
 
 async function main() {
