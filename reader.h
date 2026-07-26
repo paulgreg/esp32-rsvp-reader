@@ -4,3 +4,5 @@
 
 bool readerInit(const char* filename, size_t blockSize);
 const char* readerNextWord(uint16_t* pauseMs);
+bool readerRestart();
+bool readerRewindSentence();

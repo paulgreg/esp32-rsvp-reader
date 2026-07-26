@@ -116,6 +116,34 @@ void drawStatusIcon(bool playing) {
   }
 }
 
+void clearRewindIcon() {
+  const int16_t size = STATUS_ICON_SIZE_PX;
+  const int16_t margin = STATUS_ICON_MARGIN_PX;
+  const int16_t x = (int16_t)tft.width() - (2 * margin) - (2 * size);
+  const int16_t y = margin;
+
+  tft.fillRect(x - 1, y - 1, size + 2, size + 2, BACKGND);
+}
+
+void drawRewindIcon() {
+  const int16_t size = STATUS_ICON_SIZE_PX;
+  const int16_t margin = STATUS_ICON_MARGIN_PX;
+  const int16_t x = (int16_t)tft.width() - (2 * margin) - (2 * size);
+  const int16_t y = margin;
+  const int16_t halfH = size / 2;
+  const int16_t triW = (size >= 8) ? (size / 2) : 4;
+  const int16_t gap = (size >= 8) ? (size / 6) : 1;
+
+  clearRewindIcon();
+
+  const int16_t x1Right = x + triW;
+  const int16_t x2Right = x + size;
+  const int16_t x2Left = x2Right - triW;
+
+  tft.fillTriangle(x, y + halfH, x1Right, y, x1Right, y + size, COLOR_TEXT);
+  tft.fillTriangle(x2Left - gap, y + halfH, x2Right - gap, y, x2Right - gap, y + size, COLOR_TEXT);
+}
+
 void displayWord(const char* word) {
   static int16_t prevX = 0;
   static int16_t prevY = 0;

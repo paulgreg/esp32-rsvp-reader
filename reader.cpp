@@ -16,6 +16,9 @@ static size_t g_blockPos = 0;
 static size_t g_blockLen = 0;
 static bool g_readerReady = false;
 static char g_word[MAX_WORD_LEN + 1];
+static size_t g_sentencePos[SENTENCE_HISTORY_SIZE];
+static uint8_t g_sentenceHead = SENTENCE_HISTORY_SIZE - 1;
+static uint8_t g_sentenceCount = 0;
 
 static bool isWhitespace(char c) {
   return c == ' ' || c == '\n' || c == '\r' || c == '\t';
@@ -44,6 +47,16 @@ static bool fillBlock() {
   g_blockLen = g_bookFile.readBytes(g_blockBuffer, g_blockSize);
   g_blockPos = 0;
   return g_blockLen > 0;
+}
+
+static size_t currentConsumedPosition() {
+  if (!g_bookFile) {
+    return 0;
+  }
+
+  const size_t filePos = (size_t)g_bookFile.position();
+  const size_t unreadInBlock = g_blockLen - g_blockPos;
+  return (filePos >= unreadInBlock) ? (filePos - unreadInBlock) : 0;
 }
 
 static bool readByte(char* out) {
@@ -84,6 +97,24 @@ static uint16_t computePause(const char* token, size_t len) {
   return WORD_DELAY_MS;
 }
 
+static void recordSentenceBoundary(size_t pos) {
+  g_sentenceHead = (uint8_t)((g_sentenceHead + 1) % SENTENCE_HISTORY_SIZE);
+  g_sentencePos[g_sentenceHead] = pos;
+  if (g_sentenceCount < SENTENCE_HISTORY_SIZE) {
+    g_sentenceCount++;
+  }
+}
+
+static bool hasSentenceEnding(const char* token, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    const char c = token[i];
+    if (c == '.' || c == '!' || c == '?') {
+      return true;
+    }
+  }
+  return false;
+}
+
 const char* readerNextWord(uint16_t* pauseMs) {
   if (!g_readerReady || pauseMs == nullptr) {
     return nullptr;
@@ -116,6 +147,9 @@ const char* readerNextWord(uint16_t* pauseMs) {
 
     g_word[len] = '\0';
     *pauseMs = computePause(g_word, len);
+    if (hasSentenceEnding(g_word, len)) {
+      recordSentenceBoundary(currentConsumedPosition());
+    }
     return g_word;
   }
 
@@ -142,6 +176,8 @@ bool readerInit(const char* filename, size_t blockSize) {
   g_bookFilename[sizeof(g_bookFilename) - 1] = '\0';
 
   g_blockSize = blockSize;
+  g_sentenceHead = SENTENCE_HISTORY_SIZE - 1;
+  g_sentenceCount = 0;
   g_readerReady = reopenBookFromStart();
   if (!g_readerReady) {
     Serial.println("Failed to open selected book");
@@ -151,5 +187,37 @@ bool readerInit(const char* filename, size_t blockSize) {
     return false;
   }
 
+  return true;
+}
+
+bool readerRestart() {
+  if (!g_readerReady) {
+    return false;
+  }
+
+  g_sentenceHead = SENTENCE_HISTORY_SIZE - 1;
+  g_sentenceCount = 0;
+  return reopenBookFromStart();
+}
+
+bool readerRewindSentence() {
+  if (!g_readerReady) {
+    return false;
+  }
+
+  if (g_sentenceCount == 0) {
+    return readerRestart();
+  }
+
+  const size_t targetPos = g_sentencePos[g_sentenceHead];
+  g_sentenceHead = (uint8_t)((g_sentenceHead + SENTENCE_HISTORY_SIZE - 1) % SENTENCE_HISTORY_SIZE);
+  g_sentenceCount--;
+
+  if (!g_bookFile.seek(targetPos, SeekSet)) {
+    return false;
+  }
+
+  g_blockPos = 0;
+  g_blockLen = 0;
   return true;
 }

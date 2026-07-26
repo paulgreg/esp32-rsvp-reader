@@ -11,12 +11,19 @@ static int g_playButtonLastReading = 1;
 static int g_playButtonStableState = 1;
 static uint32_t g_playButtonLastChangeMs = 0;
 
+static int g_rewindButtonLastReading = 1;
+static int g_rewindButtonStableState = 1;
+static uint32_t g_rewindButtonLastChangeMs = 0;
+static uint32_t g_rewindPressStartMs = 0;
+static bool g_rewindLongPressTriggered = false;
+static uint32_t g_rewindIconClearAtMs = 0;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("\nRSVP reader");
 
   pinMode(BUTTON_PLAY_PIN, INPUT_PULLUP);
-  pinMode(BUTTON_MENU_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_REWIND_PIN, INPUT_PULLUP);
 
   setupScreen();
   printMsg("Init LittleFS...");
@@ -79,12 +86,63 @@ void loop() {
       Serial.printf("play: %s\n", g_play ? "on" : "off");
     }
   }
-  /*if (gpio_get_level(BUTTON_REWIND_PIN) == 1) {
-    delay(BUTTON_DEBOUNCE_DELAY_MS);
-    if (gpio_get_level(BUTTON_REWIND_PIN) == 1) {
-      Serial.println("menu button pressed");
+
+  const int rewindButtonReading = gpio_get_level(BUTTON_REWIND_PIN);
+  if (rewindButtonReading != g_rewindButtonLastReading) {
+    g_rewindButtonLastChangeMs = nowMs;
+    g_rewindButtonLastReading = rewindButtonReading;
+  }
+
+  if (nowMs - g_rewindButtonLastChangeMs >= BUTTON_DEBOUNCE_DELAY_MS &&
+      rewindButtonReading != g_rewindButtonStableState) {
+    const int previousStableState = g_rewindButtonStableState;
+    g_rewindButtonStableState = rewindButtonReading;
+
+    if (previousStableState == 1 && g_rewindButtonStableState == 0) {
+      g_rewindPressStartMs = nowMs;
+      g_rewindLongPressTriggered = false;
+    } else if (previousStableState == 0 && g_rewindButtonStableState == 1 &&
+               !g_rewindLongPressTriggered) {
+      if (readerRewindSentence()) {
+        uint16_t pauseMs = SENTENCE_DELAY_MS;
+        const char* firstWord = readerNextWord(&pauseMs);
+        if (firstWord != nullptr) {
+          displayWord(firstWord);
+        }
+        g_nextWordAtMs = nowMs + SENTENCE_DELAY_MS;
+        drawRewindIcon();
+        g_rewindIconClearAtMs = nowMs + REWIND_ICON_DISPLAY_MS;
+        Serial.println("rewind: sentence");
+      } else {
+        Serial.println("rewind: failed");
+      }
     }
-  }*/
+  }
+
+  if (g_rewindButtonStableState == 0 && !g_rewindLongPressTriggered &&
+      nowMs - g_rewindPressStartMs >= BUTTON_REWIND_LONG_PRESS_MS) {
+    g_rewindLongPressTriggered = true;
+    g_play = false;
+    if (readerRestart()) {
+      uint16_t pauseMs = SENTENCE_DELAY_MS;
+      const char* firstWord = readerNextWord(&pauseMs);
+      if (firstWord != nullptr) {
+        displayWord(firstWord);
+      }
+      g_nextWordAtMs = nowMs + SENTENCE_DELAY_MS;
+      drawRewindIcon();
+      g_rewindIconClearAtMs = nowMs + REWIND_ICON_DISPLAY_MS;
+      Serial.println("rewind: restart");
+    } else {
+      Serial.println("restart: failed");
+    }
+    drawStatusIcon(g_play);
+  }
+
+  if (g_rewindIconClearAtMs != 0 && (int32_t)(nowMs - g_rewindIconClearAtMs) >= 0) {
+    clearRewindIcon();
+    g_rewindIconClearAtMs = 0;
+  }
 
   if (g_play) {
     if ((int32_t)(nowMs - g_nextWordAtMs) < 0) {
