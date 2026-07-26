@@ -98,6 +98,24 @@ void drawOrpMarkers() {
   tft.fillRect(markerX, bottomY, ORP_MARKER_WIDTH_PX, ORP_MARKER_HEIGHT_PX, COLOR_ORP);
 }
 
+void drawStatusIcon(bool playing) {
+  const int16_t size = STATUS_ICON_SIZE_PX;
+  const int16_t margin = STATUS_ICON_MARGIN_PX;
+  const int16_t x = (int16_t)tft.width() - margin - size;
+  const int16_t y = margin;
+
+  tft.fillRect(x - 1, y - 1, size + 2, size + 2, BACKGND);
+
+  if (!playing) {
+    const int16_t barWidth = (size >= 8) ? (size / 4) : 2;
+    const int16_t gap = (size >= 8) ? (size / 4) : 2;
+    tft.fillRect(x, y, barWidth, size, COLOR_TEXT);
+    tft.fillRect(x + barWidth + gap, y, barWidth, size, COLOR_TEXT);
+  } else {
+    tft.fillTriangle(x, y, x, y + size, x + size, y + (size / 2), COLOR_TEXT);
+  }
+}
+
 void displayWord(const char* word) {
   static int16_t prevX = 0;
   static int16_t prevY = 0;

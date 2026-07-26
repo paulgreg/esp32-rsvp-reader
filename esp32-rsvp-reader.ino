@@ -4,10 +4,19 @@
 #include "storage.h"
 
 static bool g_ready = false;
+static bool g_play = false;
+static uint32_t g_nextWordAtMs = 0;
+
+static int g_playButtonLastReading = 1;
+static int g_playButtonStableState = 1;
+static uint32_t g_playButtonLastChangeMs = 0;
 
 void setup() {
   Serial.begin(115200);
   Serial.println("\nRSVP reader");
+
+  pinMode(BUTTON_PLAY_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_MENU_PIN, INPUT_PULLUP);
 
   setupScreen();
   printMsg("Init LittleFS...");
@@ -33,28 +42,68 @@ void setup() {
   }
 
   printMsg(books[0].title);
-  delay(500);
+  delay(1000);
 
   fillScreen(BACKGND);
+
   drawOrpMarkers();
+  displayWord("Start ?");
+  drawStatusIcon(g_play);
+
   g_ready = true;
 }
 
 void loop() {
   if (!g_ready) {
-    delay(WORD_DELAY_MS);
+    delay(100);
     return;
   }
 
-  uint16_t pauseMs = WORD_DELAY_MS;
-  const char* word = readerNextWord(&pauseMs);
+  const uint32_t nowMs = millis();
 
-  if (word == nullptr) {
-    delay(WORD_DELAY_MS);
-    return;
+  const int playButtonReading = gpio_get_level(BUTTON_PLAY_PIN);
+  if (playButtonReading != g_playButtonLastReading) {
+    g_playButtonLastChangeMs = nowMs;
+    g_playButtonLastReading = playButtonReading;
   }
 
-  displayWord(word);
-  delay(pauseMs);
+  if (nowMs - g_playButtonLastChangeMs >= BUTTON_DEBOUNCE_DELAY_MS &&
+      playButtonReading != g_playButtonStableState) {
+    g_playButtonStableState = playButtonReading;
+    if (g_playButtonStableState == 0) {
+      g_play = !g_play;
+      if (g_play) {
+        g_nextWordAtMs = nowMs;
+      }
+      drawStatusIcon(g_play);
+      Serial.printf("play: %s\n", g_play ? "on" : "off");
+    }
+  }
+  /*if (gpio_get_level(BUTTON_REWIND_PIN) == 1) {
+    delay(BUTTON_DEBOUNCE_DELAY_MS);
+    if (gpio_get_level(BUTTON_REWIND_PIN) == 1) {
+      Serial.println("menu button pressed");
+    }
+  }*/
 
+  if (g_play) {
+    if ((int32_t)(nowMs - g_nextWordAtMs) < 0) {
+      delay(1);
+      return;
+    }
+
+    uint16_t pauseMs = WORD_DELAY_MS;
+    const char* word = readerNextWord(&pauseMs);
+
+    if (word == nullptr) {
+      g_nextWordAtMs = nowMs + WORD_DELAY_MS;
+      delay(1);
+      return;
+    }
+
+    displayWord(word);
+    g_nextWordAtMs = nowMs + pauseMs;
+  } else {
+    delay(1);
+  }
 }
