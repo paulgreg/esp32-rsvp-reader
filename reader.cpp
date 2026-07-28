@@ -3,9 +3,11 @@
 #include <FS.h>
 #include <LittleFS.h>
 
+#include <cstring>
 #include <cstdlib>
 
 #include "params.h"
+#include "progress.h"
 #include "storage.h"
 
 static File g_bookFile;
@@ -187,6 +189,29 @@ bool readerInit(const char* filename, size_t blockSize) {
     return false;
   }
 
+  uint8_t sentenceHead = 0;
+  uint8_t sentenceCount = 0;
+  size_t sentencePos[SENTENCE_HISTORY_SIZE] = {0};
+  if (progressLoad(g_bookFilename, &sentenceHead, &sentenceCount, sentencePos,
+                   SENTENCE_HISTORY_SIZE)) {
+    g_sentenceHead = sentenceHead;
+    g_sentenceCount = sentenceCount;
+    memcpy(g_sentencePos, sentencePos, sizeof(g_sentencePos));
+
+    size_t resumePos = 0;
+    if (g_sentenceCount > 0) {
+      resumePos = g_sentencePos[g_sentenceHead];
+    }
+
+    if (g_bookFile.seek((size_t)resumePos, SeekSet)) {
+      g_blockPos = 0;
+      g_blockLen = 0;
+      Serial.printf("Progress restored at %u\n", (unsigned)resumePos);
+    } else {
+      Serial.println("Progress restore seek failed; starting at beginning");
+    }
+  }
+
   return true;
 }
 
@@ -195,6 +220,7 @@ bool readerRestart() {
     return false;
   }
 
+  progressClear();
   g_sentenceHead = SENTENCE_HISTORY_SIZE - 1;
   g_sentenceCount = 0;
   return reopenBookFromStart();
@@ -220,4 +246,17 @@ bool readerRewindSentence() {
   g_blockPos = 0;
   g_blockLen = 0;
   return true;
+}
+
+bool readerSaveProgress() {
+  if (!g_readerReady) {
+    return false;
+  }
+
+  return progressSave(g_bookFilename, g_sentenceHead, g_sentenceCount,
+                      g_sentencePos, SENTENCE_HISTORY_SIZE);
+}
+
+bool readerClearProgress() {
+  return progressClear();
 }

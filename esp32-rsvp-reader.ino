@@ -26,7 +26,9 @@ void setup() {
   pinMode(BUTTON_REWIND_PIN, INPUT_PULLUP);
 
   setupScreen();
-  printMsg("Init LittleFS...");
+  // screenDiagnostics();
+
+  printMsg("RSVP reader");
 
   if (!initStorage()) {
     printError("LittleFS init failed");
@@ -54,7 +56,11 @@ void setup() {
   fillScreen(BACKGND);
 
   drawOrpMarkers();
-  displayWord("Start ?");
+  uint16_t pauseMs = WORD_DELAY_MS;
+  const char* firstWord = readerNextWord(&pauseMs);
+  if (firstWord != nullptr) {
+    displayWord(firstWord);
+  }
   drawStatusIcon(g_play);
 
   g_ready = true;
@@ -81,6 +87,12 @@ void loop() {
       g_play = !g_play;
       if (g_play) {
         g_nextWordAtMs = nowMs;
+      } else {
+        if (readerSaveProgress()) {
+          Serial.println("progress: saved");
+        } else {
+          Serial.println("progress: save failed");
+        }
       }
       drawStatusIcon(g_play);
       Serial.printf("play: %s\n", g_play ? "on" : "off");
