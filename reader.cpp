@@ -17,6 +17,7 @@ static size_t g_blockSize = 0;
 static size_t g_blockPos = 0;
 static size_t g_blockLen = 0;
 static bool g_readerReady = false;
+static bool g_atEnd = false;
 static char g_word[MAX_WORD_LEN + 1];
 static size_t g_sentencePos[SENTENCE_HISTORY_SIZE];
 static uint8_t g_sentenceHead = SENTENCE_HISTORY_SIZE - 1;
@@ -122,40 +123,39 @@ const char* readerNextWord(uint16_t* pauseMs) {
     return nullptr;
   }
 
-  for (uint8_t attempt = 0; attempt < 2; attempt++) {
-    size_t len = 0;
-    char c = '\0';
-    bool hasChar = false;
+  size_t len = 0;
+  char c = '\0';
+  bool hasChar = false;
 
-    while (readByte(&c)) {
-      if (!isWhitespace(c)) {
-        hasChar = true;
-        break;
-      }
+  while (readByte(&c)) {
+    if (!isWhitespace(c)) {
+      hasChar = true;
+      break;
     }
-
-    if (!hasChar) {
-      if (attempt == 0 && reopenBookFromStart()) {
-        continue;
-      }
-      return nullptr;
-    }
-
-    do {
-      if (len < MAX_WORD_LEN) {
-        g_word[len++] = c;
-      }
-    } while (readByte(&c) && !isWhitespace(c));
-
-    g_word[len] = '\0';
-    *pauseMs = computePause(g_word, len);
-    if (hasSentenceEnding(g_word, len)) {
-      recordSentenceBoundary(currentConsumedPosition());
-    }
-    return g_word;
   }
 
-  return nullptr;
+  if (!hasChar) {
+    g_atEnd = true;
+    return nullptr;
+  }
+
+  do {
+    if (len < MAX_WORD_LEN) {
+      g_word[len++] = c;
+    }
+  } while (readByte(&c) && !isWhitespace(c));
+
+  g_word[len] = '\0';
+  g_atEnd = false;
+  *pauseMs = computePause(g_word, len);
+  if (hasSentenceEnding(g_word, len)) {
+    recordSentenceBoundary(currentConsumedPosition());
+  }
+  return g_word;
+}
+
+bool readerIsAtEnd() {
+  return g_atEnd;
 }
 
 bool readerInit(const char* filename, size_t blockSize) {
@@ -180,6 +180,7 @@ bool readerInit(const char* filename, size_t blockSize) {
   g_blockSize = blockSize;
   g_sentenceHead = SENTENCE_HISTORY_SIZE - 1;
   g_sentenceCount = 0;
+  g_atEnd = false;
   g_readerReady = reopenBookFromStart();
   if (!g_readerReady) {
     Serial.println("Failed to open selected book");
@@ -223,6 +224,7 @@ bool readerRestart() {
   progressClear();
   g_sentenceHead = SENTENCE_HISTORY_SIZE - 1;
   g_sentenceCount = 0;
+  g_atEnd = false;
   return reopenBookFromStart();
 }
 
@@ -243,6 +245,7 @@ bool readerRewindSentence() {
     return false;
   }
 
+  g_atEnd = false;
   g_blockPos = 0;
   g_blockLen = 0;
   return true;

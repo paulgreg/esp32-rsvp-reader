@@ -5,6 +5,7 @@
 
 static bool g_ready = false;
 static bool g_play = false;
+static bool g_atEnd = false;
 static uint32_t g_nextWordAtMs = 0;
 
 static int g_playButtonLastReading = 1;
@@ -60,6 +61,9 @@ void setup() {
   const char* firstWord = readerNextWord(&pauseMs);
   if (firstWord != nullptr) {
     displayWord(firstWord);
+  } else if (readerIsAtEnd()) {
+    g_atEnd = true;
+    displayEnd();
   }
   drawStatusIcon(g_play);
 
@@ -84,6 +88,24 @@ void loop() {
       playButtonReading != g_playButtonStableState) {
     g_playButtonStableState = playButtonReading;
     if (g_playButtonStableState == 0) {
+      if (g_atEnd) {
+        if (readerRestart()) {
+          uint16_t pauseMs = WORD_DELAY_MS;
+          const char* firstWord = readerNextWord(&pauseMs);
+          if (firstWord != nullptr) {
+            displayWord(firstWord);
+          }
+          g_atEnd = false;
+          g_play = true;
+          g_nextWordAtMs = nowMs + pauseMs;
+          drawStatusIcon(g_play);
+          Serial.println("restart: from end");
+        } else {
+          Serial.println("restart: failed");
+        }
+        return;
+      }
+
       g_play = !g_play;
       if (g_play) {
         g_nextWordAtMs = nowMs;
@@ -120,6 +142,7 @@ void loop() {
         const char* firstWord = readerNextWord(&pauseMs);
         if (firstWord != nullptr) {
           displayWord(firstWord);
+          g_atEnd = false;
         }
         g_nextWordAtMs = nowMs + SENTENCE_DELAY_MS;
         drawRewindIcon();
@@ -140,6 +163,7 @@ void loop() {
       const char* firstWord = readerNextWord(&pauseMs);
       if (firstWord != nullptr) {
         displayWord(firstWord);
+        g_atEnd = false;
       }
       g_nextWordAtMs = nowMs + SENTENCE_DELAY_MS;
       drawRewindIcon();
@@ -166,11 +190,19 @@ void loop() {
     const char* word = readerNextWord(&pauseMs);
 
     if (word == nullptr) {
+      if (readerIsAtEnd()) {
+        g_atEnd = true;
+        g_play = false;
+        displayEnd();
+        drawStatusIcon(g_play);
+        Serial.println("book: end reached");
+      }
       g_nextWordAtMs = nowMs + WORD_DELAY_MS;
       delay(1);
       return;
     }
 
+    g_atEnd = false;
     displayWord(word);
     g_nextWordAtMs = nowMs + pauseMs;
   } else {
