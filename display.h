@@ -9,6 +9,7 @@ void fillScreen(int color);
 void setupScreen();
 void printMsg(const char* text);
 void printError(const char* text);
+void displayMenu(const char* title, int index, int total);
 int16_t getOrpColumnX();
 void drawOrpMarkers();
 void drawStatusIcon(bool playing);

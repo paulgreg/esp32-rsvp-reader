@@ -2,6 +2,7 @@
 
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
+#include <cstdio>
 #include <cstring>
 
 #include "Fonts/Cantarell_Bold_euro18pt8b.h"
@@ -21,6 +22,26 @@ static Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_RST);
 static void drawText(int x, int y, int color, const char* text) {
   tft.setFont(&Cantarell_Bold_euro18pt8b);
   tft.setTextSize(1);
+  tft.setTextColor(color);
+  tft.setCursor(x, y);
+  tft.println(text);
+}
+
+static void drawCenteredText(int y, int color, const char* text) {
+  int16_t x1 = 0;
+  int16_t y1 = 0;
+  uint16_t w = 0;
+  uint16_t h = 0;
+
+  tft.setFont(&Cantarell_Bold_euro18pt8b);
+  tft.setTextSize(1);
+  tft.getTextBounds(text, 0, y, &x1, &y1, &w, &h);
+
+  int16_t x = ((int16_t)tft.width() - (int16_t)w) / 2;
+  if (x < 0) {
+    x = 0;
+  }
+
   tft.setTextColor(color);
   tft.setCursor(x, y);
   tft.println(text);
@@ -62,6 +83,16 @@ void printMsg(const char* text) {
 void printError(const char* text) {
   fillScreen(ILI9341_WHITE);
   drawText(5, 50, ILI9341_RED, text);
+}
+
+void displayMenu(const char* title, int index, int total) {
+  char indexLine[24];
+  snprintf(indexLine, sizeof(indexLine), "%d / %d", index + 1, total);
+
+  fillScreen(BACKGND);
+  drawCenteredText(48, COLOR_TEXT, "Select book");
+  drawCenteredText(88, COLOR_ORP, indexLine);
+  drawCenteredText(((int16_t)tft.height() / 2) + 22, COLOR_TEXT, title);
 }
 
 int16_t getOrpColumnX() {

@@ -3,10 +3,20 @@
 #include "reader.h"
 #include "storage.h"
 
+enum class AppState {
+  MENU,
+  READING,
+  END,
+};
+
 static bool g_ready = false;
+static AppState g_state = AppState::MENU;
 static bool g_play = false;
-static bool g_atEnd = false;
 static uint32_t g_nextWordAtMs = 0;
+
+static BookInfo g_books[MAX_BOOKS];
+static int g_bookCount = 0;
+static int g_selectedBook = 0;
 
 static int g_playButtonLastReading = 1;
 static int g_playButtonStableState = 1;
@@ -18,6 +28,43 @@ static uint32_t g_rewindButtonLastChangeMs = 0;
 static uint32_t g_rewindPressStartMs = 0;
 static bool g_rewindLongPressTriggered = false;
 static uint32_t g_rewindIconClearAtMs = 0;
+
+static void showBookMenu() {
+  displayMenu(g_books[g_selectedBook].title, g_selectedBook, g_bookCount);
+}
+
+static bool openSelectedBook(uint32_t nowMs) {
+  Serial.print("Selected book: ");
+  Serial.println(g_books[g_selectedBook].filename);
+
+  if (!readerInit(g_books[g_selectedBook].filename, BOOK_BLOCK_SIZE)) {
+    printError("Book open failed");
+    return false;
+  }
+
+  g_play = false;
+  g_nextWordAtMs = nowMs;
+  g_rewindLongPressTriggered = false;
+  g_rewindIconClearAtMs = 0;
+
+  fillScreen(BACKGND);
+  drawOrpMarkers();
+
+  uint16_t pauseMs = WORD_DELAY_MS;
+  const char* firstWord = readerNextWord(&pauseMs);
+  if (firstWord != nullptr) {
+    displayWord(firstWord);
+    g_state = AppState::READING;
+  } else if (readerIsAtEnd()) {
+    displayEnd();
+    g_state = AppState::END;
+  } else {
+    g_state = AppState::READING;
+  }
+
+  drawStatusIcon(g_play);
+  return true;
+}
 
 void setup() {
   Serial.begin(115200);
@@ -36,36 +83,15 @@ void setup() {
     return;
   }
 
-  BookInfo books[MAX_BOOKS];
-  const int bookCount = listAvailableBooks(books, MAX_BOOKS);
-  if (bookCount <= 0) {
+  g_bookCount = listAvailableBooks(g_books, MAX_BOOKS);
+  if (g_bookCount <= 0) {
     printError("No .txt book found");
     return;
   }
 
-  Serial.print("Selected book: ");
-  Serial.println(books[0].filename);
-
-  if (!readerInit(books[0].filename, BOOK_BLOCK_SIZE)) {
-    printError("Book open failed");
-    return;
-  }
-
-  printMsg(books[0].title);
-  delay(1000);
-
-  fillScreen(BACKGND);
-
-  drawOrpMarkers();
-  uint16_t pauseMs = WORD_DELAY_MS;
-  const char* firstWord = readerNextWord(&pauseMs);
-  if (firstWord != nullptr) {
-    displayWord(firstWord);
-  } else if (readerIsAtEnd()) {
-    g_atEnd = true;
-    displayEnd();
-  }
-  drawStatusIcon(g_play);
+  g_selectedBook = 0;
+  g_state = AppState::MENU;
+  showBookMenu();
 
   g_ready = true;
 }
@@ -88,14 +114,21 @@ void loop() {
       playButtonReading != g_playButtonStableState) {
     g_playButtonStableState = playButtonReading;
     if (g_playButtonStableState == 0) {
-      if (g_atEnd) {
+      if (g_state == AppState::MENU) {
+        if (openSelectedBook(nowMs)) {
+          Serial.println("menu: book opened");
+        }
+        return;
+      }
+
+      if (g_state == AppState::END) {
         if (readerRestart()) {
           uint16_t pauseMs = WORD_DELAY_MS;
           const char* firstWord = readerNextWord(&pauseMs);
           if (firstWord != nullptr) {
             displayWord(firstWord);
           }
-          g_atEnd = false;
+          g_state = AppState::READING;
           g_play = true;
           g_nextWordAtMs = nowMs + pauseMs;
           drawStatusIcon(g_play);
@@ -133,16 +166,29 @@ void loop() {
     g_rewindButtonStableState = rewindButtonReading;
 
     if (previousStableState == 1 && g_rewindButtonStableState == 0) {
+      if (g_state == AppState::MENU) {
+        if (g_bookCount > 0) {
+          g_selectedBook = (g_selectedBook + 1) % g_bookCount;
+          showBookMenu();
+          Serial.printf("menu: selected %d\n", g_selectedBook + 1);
+        }
+        return;
+      }
+
       g_rewindPressStartMs = nowMs;
       g_rewindLongPressTriggered = false;
     } else if (previousStableState == 0 && g_rewindButtonStableState == 1 &&
                !g_rewindLongPressTriggered) {
+      if (g_state != AppState::READING && g_state != AppState::END) {
+        return;
+      }
+
       if (readerRewindSentence()) {
         uint16_t pauseMs = SENTENCE_DELAY_MS;
         const char* firstWord = readerNextWord(&pauseMs);
         if (firstWord != nullptr) {
           displayWord(firstWord);
-          g_atEnd = false;
+          g_state = AppState::READING;
         }
         g_nextWordAtMs = nowMs + SENTENCE_DELAY_MS;
         drawRewindIcon();
@@ -154,7 +200,8 @@ void loop() {
     }
   }
 
-  if (g_rewindButtonStableState == 0 && !g_rewindLongPressTriggered &&
+  if ((g_state == AppState::READING || g_state == AppState::END) &&
+      g_rewindButtonStableState == 0 && !g_rewindLongPressTriggered &&
       nowMs - g_rewindPressStartMs >= BUTTON_REWIND_LONG_PRESS_MS) {
     g_rewindLongPressTriggered = true;
     g_play = false;
@@ -163,7 +210,7 @@ void loop() {
       const char* firstWord = readerNextWord(&pauseMs);
       if (firstWord != nullptr) {
         displayWord(firstWord);
-        g_atEnd = false;
+        g_state = AppState::READING;
       }
       g_nextWordAtMs = nowMs + SENTENCE_DELAY_MS;
       drawRewindIcon();
@@ -180,32 +227,32 @@ void loop() {
     g_rewindIconClearAtMs = 0;
   }
 
-  if (g_play) {
-    if ((int32_t)(nowMs - g_nextWordAtMs) < 0) {
-      delay(1);
-      return;
-    }
-
-    uint16_t pauseMs = WORD_DELAY_MS;
-    const char* word = readerNextWord(&pauseMs);
-
-    if (word == nullptr) {
-      if (readerIsAtEnd()) {
-        g_atEnd = true;
-        g_play = false;
-        displayEnd();
-        drawStatusIcon(g_play);
-        Serial.println("book: end reached");
-      }
-      g_nextWordAtMs = nowMs + WORD_DELAY_MS;
-      delay(1);
-      return;
-    }
-
-    g_atEnd = false;
-    displayWord(word);
-    g_nextWordAtMs = nowMs + pauseMs;
-  } else {
+  if (g_state != AppState::READING || !g_play) {
     delay(1);
+    return;
   }
+
+  if ((int32_t)(nowMs - g_nextWordAtMs) < 0) {
+    delay(1);
+    return;
+  }
+
+  uint16_t pauseMs = WORD_DELAY_MS;
+  const char* word = readerNextWord(&pauseMs);
+
+  if (word == nullptr) {
+    if (readerIsAtEnd()) {
+      g_state = AppState::END;
+      g_play = false;
+      displayEnd();
+      drawStatusIcon(g_play);
+      Serial.println("book: end reached");
+    }
+    g_nextWordAtMs = nowMs + WORD_DELAY_MS;
+    delay(1);
+    return;
+  }
+
+  displayWord(word);
+  g_nextWordAtMs = nowMs + pauseMs;
 }
